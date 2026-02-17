@@ -9,6 +9,8 @@
 #include <string>
 #include <chrono>
 #include <algorithm>
+#include <thread>
+#include <atomic>
 #include <memory>
 
 // --- Constants & Config ---
@@ -52,16 +54,40 @@ struct Entity {
     }
 };
 
+// --- Sound Helpers (native Beep-based, run on worker threads) ---
+static void playLaunchSound() {
+    std::thread([](){
+        Beep(1200, 60);
+        Sleep(30);
+        Beep(1600, 40);
+    }).detach();
+}
+
+static void playExplosionSound() {
+    std::thread([](){
+        // short descending rumble
+        Beep(800, 80);
+        Beep(700, 70);
+        Beep(600, 80);
+    }).detach();
+}
+
 // --- Game Engine ---
 class MissileCommand {
 public:
-    MissileCommand() : m_score(0), m_wave(1), m_gameOver(false) {
+    MissileCommand() : m_score(0), m_wave(1), m_gameOver(false), m_musicRunning(false) {
         m_base = {WIN_W / 2.0f, WIN_H - 30.0f};
         startWave();
+        startMusic();
+    }
+
+    ~MissileCommand() {
+        m_musicRunning = false;
+        if (m_musicThread.joinable()) m_musicThread.join();
     }
 
     void update(float dt) {
-        if (m_gameOver) return;
+        if (m_gameOver.load()) return;
 
         // 1. Update Player Missiles
         for (auto& m : m_missiles) {
@@ -79,6 +105,7 @@ public:
                 // If moving up, target y is less than current y usually
                 if (m.pos.y <= m.target.y) {
                     m.exploding = true;
+                    playExplosionSound();
                 }
             }
         }
@@ -166,7 +193,7 @@ public:
         wsprintf(hud, L"WAVE: %d  SCORE: %d", m_wave, m_score);
         TextOut(memDC, 10, 10, hud, (int)wcslen(hud));
 
-        if (m_gameOver) {
+        if (m_gameOver.load()) {
             SetTextColor(memDC, RGB(255, 50, 50));
             const wchar_t* msg = L"GAME OVER - PRESS R TO RESTART";
             TextOut(memDC, WIN_W/2 - 100, WIN_H/2, msg, (int)wcslen(msg));
@@ -182,8 +209,10 @@ public:
     }
 
     void shoot(int x, int y) {
-        if (!m_gameOver)
+        if (!m_gameOver.load()) {
             m_missiles.emplace_back(m_base, Vec2{(float)x, (float)y}, 0);
+            playLaunchSound();
+        }
     }
 
     void reset() {
@@ -230,13 +259,41 @@ private:
         DeleteObject(pen);
     }
 
+    void startMusic();
+
     Vec2 m_base;
     std::vector<Entity> m_missiles;
     std::vector<Entity> m_enemies;
     int m_score;
     int m_wave;
-    bool m_gameOver;
+    std::atomic<bool> m_gameOver;
+    std::atomic<bool> m_musicRunning;
+    std::thread m_musicThread;
 };
+
+// --- MissileCommand music thread implementation ---
+void MissileCommand::startMusic() {
+    m_musicRunning = true;
+    m_musicThread = std::thread([this]() {
+        while (m_musicRunning) {
+            if (!m_gameOver.load()) {
+                // simple relaxing arpeggio / motif using Beep
+                Beep(440, 240); // A4
+                Sleep(40);
+                Beep(523, 200); // C5
+                Sleep(30);
+                Beep(659, 300); // E5
+                Sleep(60);
+                Beep(523, 180); // C5
+                Sleep(80);
+                Beep(392, 260); // G4
+                Sleep(120);
+            } else {
+                Sleep(200);
+            }
+        }
+    });
+}
 
 // --- Windows Boilerplate ---
 MissileCommand* g_game = nullptr;
