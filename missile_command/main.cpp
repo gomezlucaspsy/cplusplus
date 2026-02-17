@@ -13,6 +13,13 @@
 #include <atomic>
 #include <memory>
 
+// Detect older MinGW (non-w64) which often lacks proper std::thread support.
+// MinGW-w64 defines __MINGW64_VERSION_MAJOR__. If that macro isn't present
+// on a MinGW32 build, provide a fallback that avoids using std::thread.
+#if defined(__MINGW32__) && !defined(__MINGW64_VERSION_MAJOR__)
+#define NO_STD_THREAD_FALLBACK 1
+#endif
+
 // --- Constants & Config ---
 constexpr int WIN_W = 1024;
 constexpr int WIN_H = 768;
@@ -55,6 +62,20 @@ struct Entity {
 };
 
 // --- Sound Helpers (native Beep-based, run on worker threads) ---
+#ifdef NO_STD_THREAD_FALLBACK
+static void playLaunchSound() {
+    // Fallback: play synchronously when std::thread isn't available.
+    Beep(1200, 60);
+    Sleep(30);
+    Beep(1600, 40);
+}
+
+static void playExplosionSound() {
+    Beep(800, 80);
+    Beep(700, 70);
+    Beep(600, 80);
+}
+#else
 static void playLaunchSound() {
     std::thread([](){
         Beep(1200, 60);
@@ -71,6 +92,7 @@ static void playExplosionSound() {
         Beep(600, 80);
     }).detach();
 }
+#endif
 
 // --- Game Engine ---
 class MissileCommand {
@@ -83,7 +105,9 @@ public:
 
     ~MissileCommand() {
         m_musicRunning = false;
+#ifndef NO_STD_THREAD_FALLBACK
         if (m_musicThread.joinable()) m_musicThread.join();
+#endif
     }
 
     void update(float dt) {
@@ -268,10 +292,13 @@ private:
     int m_wave;
     std::atomic<bool> m_gameOver;
     std::atomic<bool> m_musicRunning;
+#ifndef NO_STD_THREAD_FALLBACK
     std::thread m_musicThread;
+#endif
 };
 
 // --- MissileCommand music thread implementation ---
+#ifndef NO_STD_THREAD_FALLBACK
 void MissileCommand::startMusic() {
     m_musicRunning = true;
     m_musicThread = std::thread([this]() {
@@ -294,6 +321,12 @@ void MissileCommand::startMusic() {
         }
     });
 }
+#else
+void MissileCommand::startMusic() {
+    // No threaded music available on this toolchain; do nothing.
+    m_musicRunning = false;
+}
+#endif
 
 // --- Windows Boilerplate ---
 MissileCommand* g_game = nullptr;
