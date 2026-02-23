@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\src\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\src\encryption.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\src\network.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\src\ui.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\src\utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\include\encryption.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\include\network.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\include\ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\include\utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\include\config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\publi\OneDrive\Desktop\CODE\cplusplus\encrypted_comm\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{B6BB8326-4311-35FD-BA51-9AC46F1A4AC2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{A4DDD401-F224-3146-88EB-1A02E89D3263}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

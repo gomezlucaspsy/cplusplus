@@ -11,6 +11,9 @@ bool isRunning = true;
 std::string userName = "User";
 std::string localIP = "";
 
+void SetColor(const std::string& color);
+void ResetColor();
+
 void OnMessageReceived(const std::string& message, bool isOwn) {
     UI::PrintMessage("Remote", message, isOwn);
 }
@@ -131,7 +134,7 @@ int main() {
             UI::PrintMessage(userName, "Unknown command: " + input, true);
         } else {
             // Send message
-            if (!Network::SendMessage(input)) {
+            if (!Network::SendEncryptedMessage(input)) {
                 UI::PrintMessage(userName, "[FAILED TO SEND] " + input, true);
             } else {
                 UI::PrintMessage(userName, input, true);

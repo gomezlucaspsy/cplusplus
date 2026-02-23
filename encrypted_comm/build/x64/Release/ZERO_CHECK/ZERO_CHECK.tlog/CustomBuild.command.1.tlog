@@ -1,0 +1,10 @@
+^C:\USERS\PUBLI\ONEDRIVE\DESKTOP\CODE\CPLUSPLUS\ENCRYPTED_COMM\BUILD\CMAKEFILES\4C30232779F338A7D32E369F760D4B2D\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/publi/OneDrive/Desktop/CODE/cplusplus/encrypted_comm -BC:/Users/publi/OneDrive/Desktop/CODE/cplusplus/encrypted_comm/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/publi/OneDrive/Desktop/CODE/cplusplus/encrypted_comm/build/EncryptedComm.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

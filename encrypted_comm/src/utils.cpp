@@ -6,6 +6,7 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -44,7 +45,11 @@ std::vector<uint8_t> Utils::ToBytes(const std::string& str) {
 
 bool Utils::IsValidIP(const std::string& ip) {
     struct sockaddr_in sa;
+#ifdef _WIN32
+    return InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) == 1;
+#else
     return inet_aton(ip.c_str(), &sa.sin_addr) != 0;
+#endif
 }
 
 bool Utils::IsValidPort(int port) {

@@ -11,11 +11,11 @@ InstallDir "$PROGRAMFILES\EncryptedComm"
 InstallDirRegKey HKCU "Software\EncryptedComm" "InstallDir"
 
 ; MUI Settings
-!insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_LANGUAGE "English"
 
 ; Installer sections
 Section "Install"

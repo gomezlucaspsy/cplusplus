@@ -7,6 +7,7 @@
 #include <memory>
 #include <thread>
 #include <mutex>
+#include <functional>
 
 class Network {
 public:
@@ -19,7 +20,7 @@ public:
     static bool Connect(const std::string& host, int port, MessageCallback callback);
     
     // Send encrypted message
-    static bool SendMessage(const std::string& message);
+    static bool SendEncryptedMessage(const std::string& message);
     
     // Stop server/client
     static void Shutdown();

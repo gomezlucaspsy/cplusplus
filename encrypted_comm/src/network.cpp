@@ -9,8 +9,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
-#define INVALID_SOCKET (-1)
-#define SOCKET_ERROR (-1)
 typedef int socklen_t;
 #else
 #include <sys/socket.h>
@@ -131,7 +129,7 @@ bool Network::Connect(const std::string& host, int port, MessageCallback callbac
     return true;
 }
 
-bool Network::SendMessage(const std::string& message) {
+bool Network::SendEncryptedMessage(const std::string& message) {
     std::lock_guard<std::mutex> lock(socketMutex);
     
     int target = (clientSocket != INVALID_SOCKET) ? clientSocket : serverSocket;

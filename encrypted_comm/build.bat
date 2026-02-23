@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 REM Build script for Windows
 
 color 0A
@@ -22,21 +23,73 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/4] Creating build directory...
+REM Add common MinGW paths if available but not in PATH
+if exist C:\MinGW\bin\g++.exe set "PATH=C:\MinGW\bin;%PATH%"
+if exist C:\msys64\mingw64\bin\g++.exe set "PATH=C:\msys64\mingw64\bin;%PATH%"
+if exist C:\msys64\ucrt64\bin\g++.exe set "PATH=C:\msys64\ucrt64\bin;%PATH%"
+
+echo [1/4] Detecting build tools...
+set "GENERATOR="
+
+echo [2/4] Creating build directory...
 if not exist build mkdir build
 cd build
 
-echo [2/4] Running CMake...
-cmake -G "MinGW Makefiles" ..
-if %errorlevel% neq 0 (
-    color 0C
-    echo CMake configuration failed!
-    pause
-    exit /b 1
+echo [3/4] Running CMake...
+
+where mingw32-make >nul 2>nul
+if %errorlevel% equ 0 (
+    where g++ >nul 2>nul
+    if %errorlevel% equ 0 (
+        call :clean_cache
+        echo Trying generator: MinGW Makefiles
+        cmake -S .. -B . -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++
+        if %errorlevel% equ 0 (
+            set "GENERATOR=MinGW Makefiles"
+            goto :configured
+        )
+    )
 )
 
-echo [3/4] Compiling...
-mingw32-make
+where ninja >nul 2>nul
+if %errorlevel% equ 0 (
+    where g++ >nul 2>nul
+    if %errorlevel% equ 0 (
+        call :clean_cache
+        echo Trying generator: Ninja
+        cmake -S .. -B . -G "Ninja" -DCMAKE_CXX_COMPILER=g++
+        if %errorlevel% equ 0 (
+            set "GENERATOR=Ninja"
+            goto :configured
+        )
+    )
+)
+
+call :clean_cache
+echo Trying CMake default generator...
+cmake -S .. -B .
+if %errorlevel% equ 0 (
+    set "GENERATOR=Default"
+    goto :configured
+)
+
+color 0C
+echo CMake configuration failed with all supported strategies.
+echo.
+echo Install one of the following toolchains, then re-run build.bat:
+echo   - MinGW-w64 ^(g++ + mingw32-make^)
+echo   - Ninja + g++
+echo   - Visual Studio 2022 Build Tools ^(Desktop development with C++^)
+echo.
+echo If MinGW is already installed, add its bin folder to PATH.
+pause
+exit /b 1
+
+:configured
+echo Selected generator: %GENERATOR%
+
+echo [4/4] Compiling...
+cmake --build . --config Release
 if %errorlevel% neq 0 (
     color 0C
     echo Compilation failed!
@@ -44,7 +97,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [4/4] Build complete!
+echo Build complete!
 echo.
 
 color 0B
@@ -58,3 +111,9 @@ echo.
 color 0A
 
 pause
+exit /b 0
+
+:clean_cache
+if exist CMakeCache.txt del /f /q CMakeCache.txt >nul 2>nul
+if exist CMakeFiles rmdir /s /q CMakeFiles >nul 2>nul
+exit /b 0

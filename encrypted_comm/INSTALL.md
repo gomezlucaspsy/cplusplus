@@ -243,6 +243,16 @@ If you want to create the professional installer:
 - **macOS**: Run `xcode-select --install`
 - **Linux**: `sudo apt-get install build-essential` (Ubuntu) or `sudo dnf groupinstall "Development Tools"` (Fedora)
 
+### "CMake was unable to find a build program corresponding to MinGW Makefiles"
+- The Windows `build.bat` now tries multiple strategies automatically:
+   - `MinGW Makefiles` (`g++` + `mingw32-make`)
+   - `Ninja` (`g++` + `ninja`)
+   - CMake default generator (for Visual Studio Build Tools)
+- If it still fails, install one complete toolchain:
+   - MinGW-w64 (`g++` + `mingw32-make`)
+   - Ninja + MinGW-w64 `g++`
+   - Visual Studio 2022 Build Tools with **Desktop development with C++**
+
 ### "build.sh: Permission denied"
 ```bash
 chmod +x build.sh
