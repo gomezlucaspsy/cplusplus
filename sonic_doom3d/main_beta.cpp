@@ -301,16 +301,16 @@ void presentFrame(HWND hWnd) {
 // ============================================================
 //  SOUND  (simple beep-based effects via PlaySound / Beep)
 // ============================================================
-enum SoundId { SND_RING, SND_HIT, SND_JUMP, SND_WIN };
+enum SoundId { SOUND_RING, SOUND_HIT, SOUND_JUMP, SOUND_WIN };
 
 void playSound(SoundId id) {
     // Use MessageBeep tones via Beep() — no extra assets needed
     // Run in the calling thread (fast); won't block on modern hardware
     switch (id) {
-        case SND_RING:  Beep(1200, 40);  break;
-        case SND_HIT:   Beep(220,  120); break;
-        case SND_JUMP:  Beep(880,  35);  break;
-        case SND_WIN:   Beep(1047, 80); Beep(1319, 80); Beep(1568, 160); break;
+        case SOUND_RING:  Beep(1200, 40);  break;
+        case SOUND_HIT:   Beep(220,  120); break;
+        case SOUND_JUMP:  Beep(880,  35);  break;
+        case SOUND_WIN:   Beep(1047, 80); Beep(1319, 80); Beep(1568, 160); break;
     }
 }
 
@@ -872,7 +872,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             if (jumpNow && !prevJump && player.onGround) {
                 player.vz = kJumpVelocity;
                 player.onGround = false;
-                playSound(SND_JUMP);
+                playSound(SOUND_JUMP);
             }
             prevJump = jumpNow;
 
@@ -888,7 +888,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             // ---- Map triggers ----
             int cx = (int)player.pos.x, cy = (int)player.pos.y;
             char cell = mapCell(cx, cy);
-            if (cell=='S' && player.onGround) { player.vz=9.5f; player.onGround=false; playSound(SND_JUMP); }
+            if (cell=='S' && player.onGround) { player.vz=9.5f; player.onGround=false; playSound(SOUND_JUMP); }
             if (cell=='B' && player.onGround) { player.vel=add(player.vel, mul(fwd,9.5f)); }
 
             // ---- Ring pickup ----
@@ -896,14 +896,14 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
                 if (!r.collected && lengthSq(sub(r.pos,player.pos)) <= kRingPickupDistance*kRingPickupDistance) {
                     r.collected = true;
                     ++collectedRings;
-                    playSound(SND_RING);
+                    playSound(SOUND_RING);
                 }
             }
 
             // ---- Goal ----
             if (cell=='G' && collectedRings == (int)rings.size()) {
                 won = true;
-                playSound(SND_WIN);
+                playSound(SOUND_WIN);
             }
 
             // ---- Homing missiles ----
@@ -931,7 +931,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
                     m.active=false; --lives;
                     player.vel=mul(player.vel,0.5f);
                     playerHitCooldown=kPlayerHitCooldownTime;
-                    playSound(SND_HIT);
+                    playSound(SOUND_HIT);
                     if (lives<=0) { lost=true; lives=0; }
                     continue;
                 }
@@ -974,7 +974,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
                 if (playerHitCooldown <= 0 && toPlayerSq <= kDroneHitDistance*kDroneHitDistance) {
                     --lives; playerHitCooldown=kPlayerHitCooldownTime;
                     player.vel=mul(player.vel,0.5f);
-                    playSound(SND_HIT);
+                    playSound(SOUND_HIT);
                     if (lives<=0) { lost=true; lives=0; }
                 }
             }
@@ -995,7 +995,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
                 if (playerHitCooldown <= 0 && dsq <= kBouncerHitDistance*kBouncerHitDistance) {
                     --lives; playerHitCooldown=kPlayerHitCooldownTime;
                     player.vel=mul(player.vel,0.5f);
-                    playSound(SND_HIT);
+                    playSound(SOUND_HIT);
                     if (lives<=0) { lost=true; lives=0; }
                 }
             }
