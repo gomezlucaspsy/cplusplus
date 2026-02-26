@@ -507,7 +507,9 @@ void drawRingBillboard(const Player& player, const Ring& ring, float horizon) {
     int sx = (int)((a/kHalfFov*0.5f+0.5f)*(float)kScreenWidth);
     int sz = (int)clampf(680.0f/dist, 4.0f, 120.0f);
     int cy = (int)(kScreenHeight*0.5f + horizon - player.z*130.0f);
-    drawCircleOutline(sx, cy, sz/2, std::max(2,sz/6), 0x0000D9FF);
+    // Gold coin / artifact (Daggerfall style)
+    drawCircleOutline(sx, cy, sz/2, std::max(2,sz/6), 0x00FFD700);
+    drawCircleFilled(sx, cy, std::max(1, sz/5), 0x00FFA500);
 }
 
 void drawEnemyMissileBillboard(const Player& player, const EnemyMissile& m, float horizon) {
@@ -522,9 +524,10 @@ void drawEnemyMissileBillboard(const Player& player, const EnemyMissile& m, floa
     int sx = (int)((a/kHalfFov*0.5f+0.5f)*(float)kScreenWidth);
     int sz = (int)clampf(420.0f/dist, 3.0f, 44.0f);
     int cy = (int)(kScreenHeight*0.5f + horizon - player.z*130.0f);
+    // Dark magic projectile - purple/violet orb
     bool warn = m.warmup > 0.0f;
-    drawCircleFilled(sx, cy, std::max(2,sz/2), warn ? 0x000095FF : 0x000033FF);
-    drawCircleOutline(sx, cy, std::max(2,sz/2), 2,   warn ? 0x0000D9FF : 0x0000A0FF);
+    drawCircleFilled(sx, cy, std::max(2,sz/2), warn ? 0x00441177 : 0x00880044);
+    drawCircleOutline(sx, cy, std::max(2,sz/2), 2,   warn ? 0x00AA33FF : 0x00FF1166);
 }
 
 void drawDroneBillboard(const Player& player, const Drone& drone, float horizon) {
@@ -539,12 +542,13 @@ void drawDroneBillboard(const Player& player, const Drone& drone, float horizon)
     int sx = (int)((a/kHalfFov*0.5f+0.5f)*(float)kScreenWidth);
     int sz = (int)clampf(500.0f/dist, 4.0f, 60.0f);
     int cy = (int)(kScreenHeight*0.5f + horizon - player.z*130.0f);
-    // Drone floats at mid height — draw as a hexagon approximated by two rects + circle
-    unsigned int col = drone.alerted ? 0x00FF3300 : 0x00FF8800;
+    // Dungeon imp/wraith - green glowing eyes, dark body
+    unsigned int col = drone.alerted ? 0x00CC2200 : 0x00336600;
+    unsigned int eyeCol = drone.alerted ? 0x00FF4400 : 0x0066FF44;
     drawCircleFilled(sx, cy, std::max(3,sz/2), col);
-    drawCircleOutline(sx, cy, std::max(3,sz/2), 2, 0x00FFFF00);
-    // Rotor arms (small horizontal bar)
-    fillRect(sx - sz/2, cy - 1, sz, 2, 0x00FFFF00);
+    drawCircleOutline(sx, cy, std::max(3,sz/2), 2, eyeCol);
+    // Eye slit (horizontal bar)
+    fillRect(sx - sz/3, cy - 1, sz*2/3, 2, eyeCol);
 }
 
 void drawBouncerBillboard(const Player& player, const Bouncer& b, float horizon) {
@@ -559,11 +563,11 @@ void drawBouncerBillboard(const Player& player, const Bouncer& b, float horizon)
     int sx = (int)((a/kHalfFov*0.5f+0.5f)*(float)kScreenWidth);
     int sz = (int)clampf(460.0f/dist, 4.0f, 52.0f);
     int cy = (int)(kScreenHeight*0.5f + horizon - player.z*130.0f);
-    // Diamond shape (two triangles) — approximated with a rotated circle + outline
-    drawCircleFilled(sx, cy, std::max(3,sz/2), 0x0000FF88);
-    drawCircleOutline(sx, cy, std::max(3,sz/2), 2, 0x0000FFCC);
-    fillRect(sx-1, cy - sz/2, 2, sz, 0x0000FFCC);  // vertical line
-    fillRect(sx - sz/2, cy-1, sz, 2, 0x0000FFCC);   // horizontal line
+    // Stone golem - grey with glowing cracks
+    drawCircleFilled(sx, cy, std::max(3,sz/2), 0x00445533);
+    drawCircleOutline(sx, cy, std::max(3,sz/2), 2, 0x00AABBAA);
+    fillRect(sx-1, cy - sz/2, 2, sz, 0x0088CC88);  // vertical crack
+    fillRect(sx - sz/2, cy-1, sz, 2, 0x0088CC88);   // horizontal crack
 }
 
 void drawFloatingSquareBillboard(const Player& player, const FloatingSquare& sq, float horizon, float levelTimer) {
@@ -597,8 +601,8 @@ void drawFloatingSquareBillboard(const Player& player, const FloatingSquare& sq,
         pts[i] = {(LONG)(sx + rx), (LONG)(cy + ry)};
     }
 
-    unsigned int edgeColor = 0x00FFFFFF;
-    unsigned int innerColor = 0x009AF9FF;
+    unsigned int edgeColor = 0x00FF9922;   // amber/fire edge
+    unsigned int innerColor = 0x00992200;   // dark crimson inner
     for (int i=0; i<4; ++i) {
         int n = (i + 1) & 3;
         drawLine(pts[i].x, pts[i].y, pts[n].x, pts[n].y, edgeColor);
@@ -659,12 +663,13 @@ void drawFloatingDonutBillboard(const Player& player, const FloatingDonut& donut
             int px = sx + (int)(x1 * inv * scale);
             int py = cy + (int)(y2 * inv * scale * 0.66f);
 
-            float shade = clampf((z2 + 1.2f) / 2.4f, 0.0f, 1.0f);
-            unsigned int blue  = (unsigned int)(170 + 70 * shade);
-            unsigned int green = (unsigned int)(90 + 80 * shade);
-            unsigned int red   = (unsigned int)(30 + 40 * shade);
-            unsigned int col = (blue << 16) | (green << 8) | red;
-            putPixel(px, py, col);
+            // Arcane portal / magical artifact - blue-violet
+            float shade2 = clampf((z2 + 1.2f) / 2.4f, 0.0f, 1.0f);
+            unsigned int blue2  = (unsigned int)(40  + 120 * shade2);
+            unsigned int green2 = (unsigned int)(10  + 40  * shade2);
+            unsigned int red2   = (unsigned int)(80  + 120 * shade2);
+            unsigned int col2 = (blue2 << 16) | (green2 << 8) | red2;
+            putPixel(px, py, col2);
         }
     }
 }
@@ -681,7 +686,9 @@ void drawSnowBillboards(const Player& player, const std::vector<SnowParticle>& s
         int sx = (int)((a/kHalfFov*0.5f+0.5f)*(float)kScreenWidth);
         int cy = (int)(kScreenHeight*0.5f + horizon - player.z*130.0f - p.z*120.0f);
         int sz = (int)clampf(56.0f/dist, 1.0f, 3.0f);
-        drawCircleFilled(sx, cy, sz, 0x00FFFFFF);
+        // Dungeon embers / dust motes - warm amber-orange glow
+        unsigned int emberCol = (sx % 3 == 0) ? 0x00FF6600 : ((sx % 3 == 1) ? 0x00FFAA00 : 0x00CC3300);
+        drawCircleFilled(sx, cy, sz, emberCol);
     }
 }
 
@@ -691,39 +698,74 @@ void drawSnowBillboards(const Player& player, const std::vector<SnowParticle>& s
 void drawHud(HDC hdc, int rings, int total, int speed, float timer,
              bool boosting, bool won, int lives, int dodged, bool lost,
              int drones, int bouncers) {
-    SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(255,255,255));
+    // Daggerfall-style HUD: dark parchment bars at top and bottom
+    RECT topBar = {0, 0, kScreenWidth, 36};
+    RECT botBar = {0, kScreenHeight-34, kScreenWidth, kScreenHeight};
+    HBRUSH darkBrush = CreateSolidBrush(RGB(12, 8, 4));
+    FillRect(hdc, &topBar, darkBrush);
+    FillRect(hdc, &botBar, darkBrush);
+    DeleteObject(darkBrush);
 
+    // Draw a thin amber border line under top bar and above bottom bar
+    HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(140, 90, 20));
+    SelectObject(hdc, borderPen);
+    MoveToEx(hdc, 0, 35, NULL); LineTo(hdc, kScreenWidth, 35);
+    MoveToEx(hdc, 0, kScreenHeight-35, NULL); LineTo(hdc, kScreenWidth, kScreenHeight-35);
+    DeleteObject(borderPen);
+
+    SetBkMode(hdc, TRANSPARENT);
+
+    // Top HUD: amber/gold text like Daggerfall
+    SetTextColor(hdc, RGB(220, 170, 50));
     char hud[320];
     std::snprintf(hud, sizeof(hud),
-        "RINGS %d/%d   SPEED %d   LIVES %d   DODGED %d   TIME %.1f%s%s%s",
+        "* GOLD: %d/%d   SPEED: %d   LIVES: %d   DODGED: %d   TIME: %.1f%s%s%s",
         rings, total, speed, lives, dodged, timer,
-        boosting ? "   BOOST"   : "",
-        drones   ? "   DRONE!"  : "",
-        bouncers ? "   BOUNCER!": "");
-    TextOutA(hdc, 18, 16, hud, (int)std::strlen(hud));
+        boosting ? "   [SPRINT]"  : "",
+        drones   ? "   !! CREATURE !!"  : "",
+        bouncers ? "   !! GOLEM !!"  : "");
+    TextOutA(hdc, 16, 10, hud, (int)std::strlen(hud));
 
-    const char* help = "WASD Move | Left/Right Turn | Space Jump | Shift Boost | R Restart";
-    TextOutA(hdc, 18, kScreenHeight-28, help, (int)std::strlen(help));
+    // Bottom: dimmer instructions
+    SetTextColor(hdc, RGB(130, 100, 50));
+    const char* help = "WASD Move | Left/Right Turn | Space Jump | Shift Sprint | R Restart";
+    TextOutA(hdc, 16, kScreenHeight-24, help, (int)std::strlen(help));
 
     if (lost) {
-        RECT panel = {kScreenWidth/2-250, kScreenHeight/2-58, kScreenWidth/2+250, kScreenHeight/2+58};
-        HBRUSH br = CreateSolidBrush(RGB(0,0,0));
+        RECT panel = {kScreenWidth/2-270, kScreenHeight/2-70, kScreenWidth/2+270, kScreenHeight/2+70};
+        HBRUSH br = CreateSolidBrush(RGB(5, 3, 1));
         FillRect(hdc, &panel, br); DeleteObject(br);
-        SetTextColor(hdc, RGB(255,70,70));
-        const char* t = "YOU GOT HIT"; TextOutA(hdc, kScreenWidth/2-58, kScreenHeight/2-30, t,(int)strlen(t));
-        SetTextColor(hdc, RGB(255,255,255));
-        const char* l = "No lives left. Press R to restart."; TextOutA(hdc, kScreenWidth/2-118, kScreenHeight/2+4, l,(int)strlen(l));
+        // Amber border
+        HPEN pp = CreatePen(PS_SOLID, 2, RGB(140, 90, 20));
+        HPEN oldPen = (HPEN)SelectObject(hdc, pp);
+        HBRUSH nb = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HBRUSH ob = (HBRUSH)SelectObject(hdc, nb);
+        Rectangle(hdc, panel.left, panel.top, panel.right, panel.bottom);
+        SelectObject(hdc, oldPen); SelectObject(hdc, ob);
+        DeleteObject(pp);
+
+        SetTextColor(hdc, RGB(200, 40, 40));
+        const char* t = "THOU HAST BEEN SLAIN"; TextOutA(hdc, kScreenWidth/2-94, kScreenHeight/2-36, t,(int)strlen(t));
+        SetTextColor(hdc, RGB(180, 140, 60));
+        const char* l = "No lives remain. Press R to continue..."; TextOutA(hdc, kScreenWidth/2-140, kScreenHeight/2+8, l,(int)strlen(l));
         return;
     }
     if (won) {
-        RECT panel = {kScreenWidth/2-250, kScreenHeight/2-58, kScreenWidth/2+250, kScreenHeight/2+58};
-        HBRUSH br = CreateSolidBrush(RGB(0,0,0));
+        RECT panel = {kScreenWidth/2-270, kScreenHeight/2-70, kScreenWidth/2+270, kScreenHeight/2+70};
+        HBRUSH br = CreateSolidBrush(RGB(5, 3, 1));
         FillRect(hdc, &panel, br); DeleteObject(br);
-        SetTextColor(hdc, RGB(255,228,74));
-        const char* t = "STAGE CLEAR!"; TextOutA(hdc, kScreenWidth/2-76, kScreenHeight/2-30, t,(int)strlen(t));
-        SetTextColor(hdc, RGB(255,255,255));
-        const char* l = "All rings collected. Reached the goal."; TextOutA(hdc, kScreenWidth/2-142, kScreenHeight/2+4, l,(int)strlen(l));
+        HPEN pp = CreatePen(PS_SOLID, 2, RGB(200, 160, 30));
+        HPEN oldPen = (HPEN)SelectObject(hdc, pp);
+        HBRUSH nb = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HBRUSH ob = (HBRUSH)SelectObject(hdc, nb);
+        Rectangle(hdc, panel.left, panel.top, panel.right, panel.bottom);
+        SelectObject(hdc, oldPen); SelectObject(hdc, ob);
+        DeleteObject(pp);
+
+        SetTextColor(hdc, RGB(255, 220, 60));
+        const char* t = "DUNGEON CLEARED!"; TextOutA(hdc, kScreenWidth/2-78, kScreenHeight/2-36, t,(int)strlen(t));
+        SetTextColor(hdc, RGB(200, 170, 90));
+        const char* l = "All treasures claimed. The gate is open."; TextOutA(hdc, kScreenWidth/2-152, kScreenHeight/2+8, l,(int)strlen(l));
     }
 }
 
@@ -748,7 +790,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
     RegisterClassA(&wc);
 
-    HWND hWnd = CreateWindowA("SonicDoom3DWindow", "Sonic Doom 3D (Improved)",
+    HWND hWnd = CreateWindowA("SonicDoom3DWindow", "Dungeon Crawler 3D - Daggerfall Edition",
         WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX,   // fixed window size
         CW_USEDEFAULT, CW_USEDEFAULT,
         kScreenWidth+16, kScreenHeight+39,
@@ -1008,9 +1050,28 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         float bob   = std::sin(levelTimer*(6.0f+speed*0.7f)) * clampf(speed/24.0f,0,1) * 16.0f;
         float horizon = bob - player.z*120.0f;
 
+        // Daggerfall dungeon: dark stone ceiling gradient, dark floor
         clearScreen(0x00000000);
-        fillRect(0, 0, kScreenWidth, kScreenHeight/2+70, 0x00FFBE50);
-        fillRect(0, kScreenHeight/2+(int)horizon, kScreenWidth, kScreenHeight/2+120, 0x00489117);
+        // Ceiling - very dark stone, nearly black dungeon roof
+        for (int cy2 = 0; cy2 < kScreenHeight/2+70; ++cy2) {
+            float t = (float)cy2 / (float)(kScreenHeight/2+70);
+            unsigned int r2 = (unsigned int)(8  + t * 18);
+            unsigned int g2 = (unsigned int)(6  + t * 14);
+            unsigned int b2 = (unsigned int)(4  + t * 10);
+            unsigned int col2 = (r2 << 16) | (g2 << 8) | b2;
+            unsigned int* row2 = &gPixels[cy2 * kScreenWidth];
+            for (int px2 = 0; px2 < kScreenWidth; ++px2) row2[px2] = col2;
+        }
+        // Floor - dark worn stone with slight warm tinge (torch-lit dungeon floor)
+        for (int fy = kScreenHeight/2+(int)horizon; fy < kScreenHeight; ++fy) {
+            float ft = 1.0f - clampf((float)(fy - (kScreenHeight/2+(int)horizon)) / (float)(kScreenHeight/2 + 120), 0.0f, 1.0f);
+            unsigned int fr = (unsigned int)(22 + ft * 20);
+            unsigned int fg = (unsigned int)(16 + ft * 14);
+            unsigned int fb = (unsigned int)(10 + ft * 8);
+            unsigned int fcol = (fr << 16) | (fg << 8) | fb;
+            unsigned int* frow = &gPixels[fy * kScreenWidth];
+            for (int fpx = 0; fpx < kScreenWidth; ++fpx) frow[fpx] = fcol;
+        }
 
         Vec2 fwd = {std::cos(player.angle), std::sin(player.angle)};
         Vec2 plane = {-fwd.y*kCameraPlaneScale, fwd.x*kCameraPlaneScale};
@@ -1022,9 +1083,49 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             float lh   = (float)kScreenHeight / dist;
             int ds = std::max(0, (int)(-lh/2 + kScreenHeight/2 + horizon));
             int de = std::min(kScreenHeight, (int)(lh/2 + kScreenHeight/2 + horizon));
-            unsigned int shade = (unsigned int)clampf(255.0f - dist*14.0f, 25.0f, 255.0f);
-            unsigned int wc    = ((shade&0xFF)<<16) | (((shade/2)&0xFF)<<8) | 0x0A;
-            drawVerticalLine(x, ds, de, wc);
+            // Daggerfall dungeon stone walls: warm torchlight on near walls, cold darkness at distance
+            // Side walls (side=true in DDA) are slightly darker for depth perception
+            float distFade = clampf(1.0f - dist / kMaxRayDistance, 0.0f, 1.0f);
+            // Base stone: grey-brown with torchlight warmth falloff
+            float torch = distFade * distFade; // quadratic falloff like torchlight
+            unsigned int wr = (unsigned int)(15 + torch * 155); // warm reddish-orange stone
+            unsigned int wg = (unsigned int)(10 + torch * 105); // slightly green for old stone
+            unsigned int wb = (unsigned int)(8  + torch * 62);  // low blue for warm stone
+            // Subtle brick banding: draw darker mortar rows every ~16 pixels
+            // (applied per-pixel inside drawVerticalLine equivalent via custom loop)
+            // Draw each pixel with brick-band effect
+            {
+                if ((unsigned)x < (unsigned)kScreenWidth) {
+                    int y0b = std::max(0, ds), y1b = std::min(kScreenHeight, de);
+                    float wallH = (float)(de - ds);
+                    for (int py = y0b; py < y1b; ++py) {
+                        // Map wall pixel to a "brick row" based on vertical position in wall
+                        float wallV = (py - ds) / (wallH > 0 ? wallH : 1.0f);
+                        // Brick rows every ~8% of wall height, mortar is thin dark line
+                        float brickRow = wallV * 12.0f;
+                        bool isMortar = (brickRow - (int)brickRow) < 0.08f;
+                        // Alternate column offset per brick row for staggered bricks
+                        bool isVMortar = false;
+                        {
+                            int bRow = (int)brickRow;
+                            float brickU = (float)x / (float)kScreenWidth;
+                            float offset = (bRow % 2 == 0) ? 0.0f : 0.5f;
+                            float brickCol = (brickU + offset) * 8.0f;
+                            isVMortar = (brickCol - (int)brickCol) < 0.06f;
+                        }
+                        unsigned int fr = wr, fg = wg, fb = wb;
+                        if (isMortar || isVMortar) {
+                            // Mortar lines darker
+                            fr = fr * 40 / 100;
+                            fg = fg * 40 / 100;
+                            fb = fb * 40 / 100;
+                        }
+                        unsigned int wc2 = (fr << 16) | (fg << 8) | fb;
+                        gPixels[py * kScreenWidth + x] = wc2;
+                    }
+                }
+            }
+            (void)wc; // wall drawn per-pixel above with brick texture
         }
 
         for (auto& r : rings)    drawRingBillboard(player, r, horizon);
