@@ -1,3 +1,4 @@
 {
-  "terminal.integrated.shellIntegration.enabled": false
+  "terminal.integrated.shellIntegration.enabled": false,
+  "cmake.sourceDirectory": "C:/Users/publi/OneDrive/Desktop/CODE/cplusplus/encrypted_comm"
 }

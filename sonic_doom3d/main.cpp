@@ -1,9 +1,11 @@
+#define NOMINMAX
 #include <windows.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -11,6 +13,8 @@ namespace {
 const int kScreenWidth = 960;
 const int kScreenHeight = 540;
 const float kFov = 1.02f;
+const float kHalfFov = kFov * 0.5f;
+const float kCameraPlaneScale = std::tan(kHalfFov);
 const float kMaxRayDistance = 28.0f;
 const float kPlayerRadius = 0.22f;
 const float kGravity = 18.5f;
@@ -23,6 +27,15 @@ const float kBoostSpeed = 16.5f;
 const float kJumpVelocity = 6.7f;
 const float kTurnRate = 2.65f;
 const float kRingPickupDistance = 0.65f;
+const float kEnemyMissileSpeed = 7.8f;
+const float kEnemyMissileLifetime = 5.2f;
+const float kEnemyMissileHitDistance = 0.36f;
+const float kEnemyMissileDespawnDistance = 18.0f;
+const float kEnemyMissileTurnRate = 3.1f;
+const float kEnemyMissileWarmupMin = 0.28f;
+const float kEnemyMissileWarmupMax = 0.66f;
+const float kPlayerHitCooldownTime = 0.85f;
+const int kEnemyMissileMaxActive = 7;
 
 struct Vec2 {
     float x;
@@ -43,8 +56,17 @@ struct Player {
     bool onGround;
 };
 
+struct EnemyMissile {
+    Vec2 pos;
+    Vec2 vel;
+    float life;
+    float warmup;
+    float closestDistSq;
+    bool active;
+};
+
 const std::vector<std::string> kMap = {
-    "############################",
+    "#....#######################",
     "#.....o..#.........o..G....#",
     "#.###.##.#.#######.#####.###",
     "#.#.....#.#.....#.....#...##",
@@ -60,10 +82,11 @@ const std::vector<std::string> kMap = {
     "#...#.....#.#....o....#..#.#",
     "#.###.#####.#########.#.##.#",
     "#...#.....#.....B.....#....#",
-    "############################"
+    "#######################....#"
 };
 
 std::vector<unsigned int> gPixels(kScreenWidth * kScreenHeight, 0);
+std::vector<float> gCameraX(kScreenWidth, 0.0f);
 
 int mapWidth() { return static_cast<int>(kMap.front().size()); }
 int mapHeight() { return static_cast<int>(kMap.size()); }
@@ -74,6 +97,10 @@ float clampf(float value, float minv, float maxv) {
 
 float length(const Vec2& v) {
     return std::sqrt(v.x * v.x + v.y * v.y);
+}
+
+float lengthSq(const Vec2& v) {
+    return v.x * v.x + v.y * v.y;
 }
 
 Vec2 normalizeOrZero(const Vec2& v) {
@@ -101,16 +128,24 @@ Vec2 mul(const Vec2& v, float scalar) {
     return out;
 }
 
-bool isWall(int x, int y) {
-    if (x < 0 || y < 0 || y >= mapHeight() || x >= mapWidth()) {
-        return true;
+Vec2 moveTowards(const Vec2& current, const Vec2& target, float maxDelta) {
+    Vec2 delta = sub(target, current);
+    const float dist = length(delta);
+    if (dist <= maxDelta || dist < 0.0001f) {
+        return target;
     }
-    return kMap[y][x] == '#';
+    return add(current, mul(delta, maxDelta / dist));
+}
+
+bool isWall(int x, int y) {
+    (void)x;
+    (void)y;
+    return false;
 }
 
 char mapCell(int x, int y) {
     if (x < 0 || y < 0 || y >= mapHeight() || x >= mapWidth()) {
-        return '#';
+        return '.';
     }
     return kMap[y][x];
 }
@@ -140,6 +175,30 @@ void clearScreen(unsigned int color) {
     std::fill(gPixels.begin(), gPixels.end(), color);
 }
 
+void drawVerticalLineClamped(int x, int y0, int y1, unsigned int color) {
+    if (x < 0 || x >= kScreenWidth) {
+        return;
+    }
+
+    const int start = std::max(0, y0);
+    const int end = std::min(kScreenHeight, y1);
+    if (start >= end) {
+        return;
+    }
+
+    int index = start * kScreenWidth + x;
+    for (int y = start; y < end; ++y) {
+        gPixels[index] = color;
+        index += kScreenWidth;
+    }
+}
+
+void initRayLut() {
+    for (int x = 0; x < kScreenWidth; ++x) {
+        gCameraX[x] = 2.0f * static_cast<float>(x) / static_cast<float>(kScreenWidth) - 1.0f;
+    }
+}
+
 void drawCircleOutline(int cx, int cy, int radius, int thickness, unsigned int color) {
     const int outer = radius;
     const int inner = std::max(0, radius - thickness);
@@ -150,6 +209,17 @@ void drawCircleOutline(int cx, int cy, int radius, int thickness, unsigned int c
         for (int x = -outer; x <= outer; ++x) {
             const int d2 = x * x + y * y;
             if (d2 <= outer2 && d2 >= inner2) {
+                putPixel(cx + x, cy + y, color);
+            }
+        }
+    }
+}
+
+void drawCircleFilled(int cx, int cy, int radius, unsigned int color) {
+    const int radiusSq = radius * radius;
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            if (x * x + y * y <= radiusSq) {
                 putPixel(cx + x, cy + y, color);
             }
         }
@@ -192,9 +262,7 @@ void resolveWallCollision(Player& player) {
     }
 }
 
-float raycastDistance(const Player& player, float rayAngle) {
-    const float rayDirX = std::cos(rayAngle);
-    const float rayDirY = std::sin(rayAngle);
+float raycastDistance(const Player& player, float rayDirX, float rayDirY) {
 
     int mapX = static_cast<int>(player.pos.x);
     int mapY = static_cast<int>(player.pos.y);
@@ -240,9 +308,7 @@ float raycastDistance(const Player& player, float rayAngle) {
             hit = true;
         }
 
-        const float traveledX = (std::fabs(rayDirX) < 0.0001f) ? 0.0f : std::fabs((mapX - player.pos.x) / rayDirX);
-        const float traveledY = (std::fabs(rayDirY) < 0.0001f) ? 0.0f : std::fabs((mapY - player.pos.y) / rayDirY);
-        if (traveledX > kMaxRayDistance && traveledY > kMaxRayDistance) {
+        if (std::min(sideDistX, sideDistY) > kMaxRayDistance) {
             return kMaxRayDistance;
         }
     }
@@ -272,6 +338,37 @@ std::vector<Ring> gatherRings() {
     return rings;
 }
 
+void spawnEnemyMissile(const Player& player, std::vector<EnemyMissile>& missiles) {
+    if (static_cast<int>(missiles.size()) >= kEnemyMissileMaxActive) {
+        return;
+    }
+
+    Vec2 spawnPos = player.pos;
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        const float angle = (static_cast<float>(std::rand() % 360) / 180.0f) * 3.1415926f;
+        const float dist = 9.0f + static_cast<float>(std::rand() % 60) * 0.1f;
+        spawnPos = add(player.pos, Vec2{std::cos(angle) * dist, std::sin(angle) * dist});
+        if (!isWall(static_cast<int>(spawnPos.x), static_cast<int>(spawnPos.y))) {
+            break;
+        }
+    }
+
+    Vec2 leadTarget = add(player.pos, mul(player.vel, 0.22f));
+    Vec2 dir = normalizeOrZero(sub(leadTarget, spawnPos));
+    if (lengthSq(dir) < 0.0001f) {
+        dir = Vec2{1.0f, 0.0f};
+    }
+
+    EnemyMissile missile;
+    missile.pos = spawnPos;
+    missile.vel = mul(dir, kEnemyMissileSpeed);
+    missile.life = kEnemyMissileLifetime;
+    missile.warmup = kEnemyMissileWarmupMin + static_cast<float>(std::rand() % 1000) / 1000.0f * (kEnemyMissileWarmupMax - kEnemyMissileWarmupMin);
+    missile.closestDistSq = 1e9f;
+    missile.active = true;
+    missiles.push_back(missile);
+}
+
 void drawRingBillboard(const Player& player, const Ring& ring, float horizonOffset) {
     if (ring.collected) {
         return;
@@ -299,16 +396,63 @@ void drawRingBillboard(const Player& player, const Ring& ring, float horizonOffs
     drawCircleOutline(screenX, centerY, projectedSize / 2, std::max(2, projectedSize / 6), 0x0000D9FF);
 }
 
-void drawHud(HDC hdc, int rings, int totalRings, int speed, float timer, bool boosting, bool won) {
+void drawEnemyMissileBillboard(const Player& player, const EnemyMissile& missile, float horizonOffset) {
+    if (!missile.active) {
+        return;
+    }
+
+    const Vec2 toMissile = sub(missile.pos, player.pos);
+    const float dist = length(toMissile);
+    if (dist < 0.1f || dist > 22.0f) {
+        return;
+    }
+
+    float missileAngle = std::atan2(toMissile.y, toMissile.x) - player.angle;
+    while (missileAngle > 3.1415926f) missileAngle -= 6.2831852f;
+    while (missileAngle < -3.1415926f) missileAngle += 6.2831852f;
+
+    if (std::fabs(missileAngle) > kHalfFov) {
+        return;
+    }
+
+    const float nx = missileAngle / kHalfFov;
+    const int screenX = static_cast<int>((nx * 0.5f + 0.5f) * static_cast<float>(kScreenWidth));
+    const int projectedSize = static_cast<int>(clampf(420.0f / dist, 3.0f, 44.0f));
+    const int centerY = static_cast<int>(kScreenHeight * 0.5f + horizonOffset - player.z * 130.0f);
+
+    const bool warning = missile.warmup > 0.0f;
+    const unsigned int fillColor = warning ? 0x000095FF : 0x000033FF;
+    const unsigned int ringColor = warning ? 0x0000D9FF : 0x0000A0FF;
+    drawCircleFilled(screenX, centerY, std::max(2, projectedSize / 2), fillColor);
+    drawCircleOutline(screenX, centerY, std::max(2, projectedSize / 2), 2, ringColor);
+}
+
+void drawHud(HDC hdc, int rings, int totalRings, int speed, float timer, bool boosting, bool won, int lives, int dodged, bool lost) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 255, 255));
 
     char hud[256];
-    std::snprintf(hud, sizeof(hud), "RINGS %d/%d   SPEED %d   TIME %.1f%s", rings, totalRings, speed, timer, boosting ? "   BOOST" : "");
+    std::snprintf(hud, sizeof(hud), "RINGS %d/%d   SPEED %d   LIVES %d   DODGED %d   TIME %.1f%s", rings, totalRings, speed, lives, dodged, timer, boosting ? "   BOOST" : "");
     TextOutA(hdc, 18, 16, hud, static_cast<int>(std::strlen(hud)));
 
-    const char* help = "WASD Move | Left/Right Turn | Space Jump | Shift Boost";
+    const char* help = "WASD Move | Left/Right Turn | Space Jump | Shift Boost | Dodge missiles | R Restart";
     TextOutA(hdc, 18, kScreenHeight - 28, help, static_cast<int>(std::strlen(help)));
+
+    if (lost) {
+        RECT panel = {kScreenWidth / 2 - 250, kScreenHeight / 2 - 58, kScreenWidth / 2 + 250, kScreenHeight / 2 + 58};
+        HBRUSH panelBrush = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(hdc, &panel, panelBrush);
+        DeleteObject(panelBrush);
+
+        SetTextColor(hdc, RGB(255, 70, 70));
+        const char* clear = "YOU GOT HIT";
+        TextOutA(hdc, kScreenWidth / 2 - 58, kScreenHeight / 2 - 30, clear, static_cast<int>(std::strlen(clear)));
+
+        SetTextColor(hdc, RGB(255, 255, 255));
+        const char* line = "No lives left. Press R to restart.";
+        TextOutA(hdc, kScreenWidth / 2 - 118, kScreenHeight / 2 + 4, line, static_cast<int>(std::strlen(line)));
+        return;
+    }
 
     if (won) {
         RECT panel = {kScreenWidth / 2 - 250, kScreenHeight / 2 - 58, kScreenWidth / 2 + 250, kScreenHeight / 2 + 58};
@@ -373,6 +517,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
+    initRayLut();
+
     Player player;
     player.pos.x = 2.5f;
     player.pos.y = 2.5f;
@@ -386,7 +532,35 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     std::vector<Ring> rings = gatherRings();
     int collectedRings = 0;
     bool won = false;
+    bool lost = false;
     float levelTimer = 0.0f;
+    int lives = 3;
+    int missilesDodged = 0;
+    float missileSpawnTimer = 0.0f;
+    std::vector<EnemyMissile> enemyMissiles;
+    float playerHitCooldown = 0.0f;
+    bool prevResetPressed = false;
+
+    auto resetRun = [&]() {
+        player.pos.x = 2.5f;
+        player.pos.y = 2.5f;
+        player.vel.x = 0.0f;
+        player.vel.y = 0.0f;
+        player.angle = 0.0f;
+        player.z = 0.0f;
+        player.vz = 0.0f;
+        player.onGround = true;
+        rings = gatherRings();
+        collectedRings = 0;
+        won = false;
+        lost = false;
+        levelTimer = 0.0f;
+        lives = 3;
+        missilesDodged = 0;
+        missileSpawnTimer = 0.0f;
+        enemyMissiles.clear();
+        playerHitCooldown = 0.0f;
+    };
 
     LARGE_INTEGER perfFreq;
     LARGE_INTEGER lastCounter;
@@ -411,6 +585,13 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         lastCounter = currentCounter;
         dt = clampf(dt, 0.0f, 0.033f);
         levelTimer += dt;
+        playerHitCooldown = std::max(0.0f, playerHitCooldown - dt);
+
+        const bool resetPressed = (GetAsyncKeyState('R') & 0x8000) != 0;
+        if (resetPressed && !prevResetPressed) {
+            resetRun();
+        }
+        prevResetPressed = resetPressed;
 
         Vec2 forward = {std::cos(player.angle), std::sin(player.angle)};
         Vec2 right = {-forward.y, forward.x};
@@ -430,25 +611,23 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         const bool boosting = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
         const float accel = player.onGround ? kAccelGround : kAccelAir;
         const float speedLimit = boosting ? kBoostSpeed : kTopRunSpeed;
+        const float moveInputSq = lengthSq(moveInput);
 
-        player.vel = add(player.vel, mul(moveInput, accel * dt));
-        const float speed = length(player.vel);
-        if (speed > speedLimit) {
-            player.vel = mul(player.vel, speedLimit / speed);
-        }
+        const Vec2 targetVel = mul(moveInput, speedLimit);
+        player.vel = moveTowards(player.vel, targetVel, accel * dt);
 
         if (player.onGround) {
             const float friction = std::max(0.0f, 1.0f - kGroundFriction * dt);
-            if (length(moveInput) < 0.1f) {
+            if (moveInputSq < 0.01f) {
                 player.vel = mul(player.vel, friction);
             } else {
-                player.vel = mul(player.vel, std::max(0.0f, 1.0f - 3.2f * dt));
+                player.vel = mul(player.vel, std::max(0.0f, 1.0f - 1.6f * dt));
             }
         } else {
             player.vel = mul(player.vel, std::max(0.0f, 1.0f - kAirDrag * dt));
         }
 
-        if (player.onGround && (GetAsyncKeyState(VK_SPACE) & 0x8000)) {
+        if (!lost && player.onGround && (GetAsyncKeyState(VK_SPACE) & 0x8000)) {
             player.vz = kJumpVelocity;
             player.onGround = false;
         }
@@ -462,19 +641,21 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             player.onGround = true;
         }
 
-        player.pos = add(player.pos, mul(player.vel, dt));
-        resolveWallCollision(player);
+        if (!lost && !won) {
+            player.pos = add(player.pos, mul(player.vel, dt));
+            resolveWallCollision(player);
+        }
 
         const int cellX = static_cast<int>(player.pos.x);
         const int cellY = static_cast<int>(player.pos.y);
         const char cell = mapCell(cellX, cellY);
 
-        if (cell == 'S' && player.onGround) {
+        if (!lost && cell == 'S' && player.onGround) {
             player.vz = 9.5f;
             player.onGround = false;
         }
 
-        if (cell == 'B' && player.onGround) {
+        if (!lost && cell == 'B' && player.onGround) {
             player.vel = add(player.vel, mul(forward, 9.5f));
         }
 
@@ -482,7 +663,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             if (rings[i].collected) {
                 continue;
             }
-            if (length(sub(rings[i].pos, player.pos)) <= kRingPickupDistance) {
+            const Vec2 toRing = sub(rings[i].pos, player.pos);
+            if (lengthSq(toRing) <= kRingPickupDistance * kRingPickupDistance) {
                 rings[i].collected = true;
                 ++collectedRings;
             }
@@ -490,6 +672,70 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
         if (cell == 'G' && collectedRings == static_cast<int>(rings.size())) {
             won = true;
+        }
+
+        if (!lost && !won) {
+            const float spawnEvery = clampf(1.6f - levelTimer * 0.014f, 0.55f, 1.6f);
+            missileSpawnTimer += dt;
+            if (missileSpawnTimer >= spawnEvery) {
+                missileSpawnTimer = 0.0f;
+                spawnEnemyMissile(player, enemyMissiles);
+            }
+
+            for (size_t i = 0; i < enemyMissiles.size(); ++i) {
+                EnemyMissile& missile = enemyMissiles[i];
+                if (!missile.active) {
+                    continue;
+                }
+
+                missile.life -= dt;
+                if (missile.warmup > 0.0f) {
+                    missile.warmup = std::max(0.0f, missile.warmup - dt);
+                    continue;
+                }
+
+                Vec2 desiredDir = normalizeOrZero(sub(add(player.pos, mul(player.vel, 0.2f)), missile.pos));
+                Vec2 currentDir = normalizeOrZero(missile.vel);
+                if (lengthSq(currentDir) < 0.0001f) {
+                    currentDir = desiredDir;
+                }
+                const float turnStep = clampf(kEnemyMissileTurnRate * dt, 0.0f, 1.0f);
+                Vec2 steered = moveTowards(currentDir, desiredDir, turnStep);
+                steered = normalizeOrZero(steered);
+                missile.vel = mul(steered, kEnemyMissileSpeed);
+                missile.pos = add(missile.pos, mul(missile.vel, dt));
+
+                if (isWall(static_cast<int>(missile.pos.x), static_cast<int>(missile.pos.y))) {
+                    missile.active = false;
+                    continue;
+                }
+
+                const Vec2 toPlayer = sub(player.pos, missile.pos);
+                const float toPlayerSq = lengthSq(toPlayer);
+                missile.closestDistSq = std::min(missile.closestDistSq, toPlayerSq);
+                if (playerHitCooldown <= 0.0f && toPlayerSq <= kEnemyMissileHitDistance * kEnemyMissileHitDistance) {
+                    missile.active = false;
+                    --lives;
+                    player.vel = mul(player.vel, 0.5f);
+                    playerHitCooldown = kPlayerHitCooldownTime;
+                    if (lives <= 0) {
+                        lost = true;
+                        lives = 0;
+                    }
+                    continue;
+                }
+
+                if (missile.life <= 0.0f || toPlayerSq > kEnemyMissileDespawnDistance * kEnemyMissileDespawnDistance) {
+                    missile.active = false;
+                    if (missile.closestDistSq < (1.8f * 1.8f)) {
+                        ++missilesDodged;
+                    }
+                }
+            }
+
+            enemyMissiles.erase(
+                std::remove_if(enemyMissiles.begin(), enemyMissiles.end(), [](const EnemyMissile& missile) { return !missile.active; }),
+                enemyMissiles.end());
         }
 
         const float movementSpeed = length(player.vel);
@@ -500,25 +746,30 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         fillRect(0, 0, kScreenWidth, kScreenHeight / 2 + 70, 0x00FFBE50);
         fillRect(0, kScreenHeight / 2 + static_cast<int>(horizonOffset), kScreenWidth, kScreenHeight / 2 + 120, 0x00489117);
 
+        const Vec2 rayPlane = {-forward.y * kCameraPlaneScale, forward.x * kCameraPlaneScale};
         for (int x = 0; x < kScreenWidth; ++x) {
-            const float cameraX = 2.0f * x / static_cast<float>(kScreenWidth) - 1.0f;
-            const float rayAngle = player.angle + cameraX * (kFov * 0.5f);
-            const float rawDistance = raycastDistance(player, rayAngle);
-            const float correctedDistance = rawDistance * std::cos(cameraX * (kFov * 0.5f));
-            const float lineHeight = static_cast<float>(kScreenHeight) / correctedDistance;
+            const float cameraX = gCameraX[x];
+            const float rayDirX = forward.x + rayPlane.x * cameraX;
+            const float rayDirY = forward.y + rayPlane.y * cameraX;
+            const float distance = raycastDistance(player, rayDirX, rayDirY);
+            const float lineHeight = static_cast<float>(kScreenHeight) / distance;
 
             int drawStart = static_cast<int>(-lineHeight / 2.0f + kScreenHeight / 2.0f + horizonOffset);
             drawStart = std::max(0, drawStart);
             int drawEnd = static_cast<int>(lineHeight / 2.0f + kScreenHeight / 2.0f + horizonOffset);
             drawEnd = std::min(kScreenHeight, drawEnd);
 
-            const unsigned int shade = static_cast<unsigned int>(clampf(255.0f - correctedDistance * 14.0f, 25.0f, 255.0f));
+            const unsigned int shade = static_cast<unsigned int>(clampf(255.0f - distance * 14.0f, 25.0f, 255.0f));
             const unsigned int wallColor = ((shade & 0xFF) << 16) | (((shade / 2) & 0xFF) << 8) | 0x0A;
-            fillRect(x, drawStart, 1, drawEnd - drawStart, wallColor);
+            drawVerticalLineClamped(x, drawStart, drawEnd, wallColor);
         }
 
         for (size_t i = 0; i < rings.size(); ++i) {
             drawRingBillboard(player, rings[i], horizonOffset);
+        }
+
+        for (size_t i = 0; i < enemyMissiles.size(); ++i) {
+            drawEnemyMissileBillboard(player, enemyMissiles[i], horizonOffset);
         }
 
         HDC hdc = GetDC(hWnd);
@@ -537,7 +788,17 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
             DIB_RGB_COLORS,
             SRCCOPY);
 
-        drawHud(hdc, collectedRings, static_cast<int>(rings.size()), static_cast<int>(movementSpeed * 10.0f), levelTimer, boosting, won);
+        drawHud(
+            hdc,
+            collectedRings,
+            static_cast<int>(rings.size()),
+            static_cast<int>(movementSpeed * 10.0f),
+            levelTimer,
+            boosting,
+            won,
+            lives,
+            missilesDodged,
+            lost);
 
         ReleaseDC(hWnd, hdc);
     }
