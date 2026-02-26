@@ -24,7 +24,7 @@ const int   kScreenHeight           = 540;
 const float kFov                    = 1.02f;
 const float kHalfFov                = kFov * 0.5f;
 const float kCameraPlaneScale       = std::tan(kHalfFov);
-const float kMaxRayDistance         = 28.0f;
+const float kMaxRayDistance         = 24.0f;
 const float kPlayerRadius           = 0.28f;   // slightly larger for better feel
 const float kGravity                = 18.5f;
 const float kGroundFriction         = 10.0f;
@@ -68,6 +68,7 @@ const int   kEnemyMissileMaxActive  = 7;
 const int   kSnowParticleCount      = 220;
 const float kSnowSpawnRadius        = 13.0f;
 const int   kTargetFPS              = 60;
+const int   kTexSize                = 64;
 
 // ============================================================
 //  DATA TYPES
@@ -119,29 +120,35 @@ struct SnowParticle {
     float z, fallSpeed;
 };
 
+struct RayHit {
+    float dist;
+    bool  side;
+    float wallX;
+};
+
 // ============================================================
 //  MAP  (# = wall, o = ring, G = goal, S = spring, B = boost,
 //         D = Drone spawn, E = Bouncer spawn, F = Floating square,
 //         O = Floating donut)
 // ============================================================
 const std::vector<std::string> kMap = {
-    "#....#######################",
-    "#.....o..#.........o..G....#",
-    "#.###.##.#.#######.#####.###",
-    "#.#.....#.#.....#.....#...##",
-    "#.###.#.#.#.###.#.###.#.#.##",
-    "#...#.#...#...#...#...#.#..#",
-    "###.#.#######.#####.###.##.#",
-    "#...#.....o.#...#.OF..#....#",
-    "#.#####.###.###.#.###.####.#",
-    "#.....#.#.....#.#...#....#.#",
-    "#.###.#.#.###.#.###.####.#.#",
-    "#...#...#.#S#.#.....#..#.#.#",
-    "###.#####.#.#.#######.##.#.#",
-    "#...#.....#.#....o....#..#.D",
-    "#.###.#####.#########.#.##.#",
-    "#...#.....#.....B.....#....#",
-    "#######################.E..#"
+    "############################",
+    "#.....o......F......o....G.#",
+    "#..........................#",
+    "#......###..........###....#",
+    "#..........................#",
+    "#....O.........S...........#",
+    "#..........................#",
+    "#.........#######..........#",
+    "#..........................#",
+    "#....D...............E.....#",
+    "#..........................#",
+    "#..........B...............#",
+    "#..........................#",
+    "#.....o....................#",
+    "#..........................#",
+    "#..........................#",
+    "############################"
 };
 
 // ============================================================
@@ -149,6 +156,8 @@ const std::vector<std::string> kMap = {
 // ============================================================
 std::vector<unsigned int> gPixels(kScreenWidth * kScreenHeight, 0);
 std::vector<float>        gCameraX(kScreenWidth, 0.0f);
+std::vector<unsigned int> gWallTex(kTexSize * kTexSize, 0);
+std::vector<unsigned int> gFloorTex(kTexSize * kTexSize, 0);
 
 // Back-buffer DC for flicker-free rendering
 HDC     gBackDC   = NULL;
@@ -201,11 +210,38 @@ bool isWall(int x, int y) {
     if (x < 0 || y < 0 || y >= mapHeight() || x >= mapWidth()) {
         return true;
     }
-    return false;
+    return kMap[y][x] == '#';
 }
 
 bool isWallF(float x, float y) {
     return isWall(static_cast<int>(x), static_cast<int>(y));
+}
+
+void generateTextures() {
+    for (int y = 0; y < kTexSize; ++y) {
+        for (int x = 0; x < kTexSize; ++x) {
+            bool edgeY = (y % 16 == 0);
+            int stagger = ((y / 16) % 2 == 0) ? 0 : 16;
+            bool edgeX = ((x + stagger) % 32 == 0);
+            bool mortar = edgeY || edgeX;
+
+            int noise = randRange(0.0f, 1.0f) * 40.0f;
+            if (mortar) {
+                gWallTex[y * kTexSize + x] = (26 << 16) | (18 << 8) | 42;
+            } else {
+                int r = 95 + noise / 2;
+                int g = 55 + noise / 3;
+                int b = 135 + noise / 2;
+                gWallTex[y * kTexSize + x] = (r << 16) | (g << 8) | b;
+            }
+
+            int fnoise = randRange(0.0f, 1.0f) * 40.0f;
+            int fr = 20 + fnoise / 3;
+            int fg = 70 + fnoise;
+            int fb = 90 + fnoise / 2;
+            gFloorTex[y * kTexSize + x] = (fr << 16) | (fg << 8) | fb;
+        }
+    }
 }
 
 // ============================================================
@@ -358,7 +394,7 @@ void resolveWallCollision(Player& player) {
 // ============================================================
 //  RAYCASTING
 // ============================================================
-float raycastDistance(const Player& player, float rdx, float rdy) {
+RayHit raycastDistance(const Player& player, float rdx, float rdy) {
     int mx = static_cast<int>(player.pos.x);
     int my = static_cast<int>(player.pos.y);
 
@@ -375,13 +411,20 @@ float raycastDistance(const Player& player, float rdx, float rdy) {
         if (sdx < sdy) { sdx+=ddx; mx+=sx; side=false; }
         else           { sdy+=ddy; my+=sy; side=true;  }
         if (isWall(mx,my)) break;
-        if (std::min(sdx,sdy) > kMaxRayDistance) return kMaxRayDistance;
+        if (std::min(sdx,sdy) > kMaxRayDistance) return {kMaxRayDistance, side, 0.0f};
     }
 
-    float dist = side
-        ? (my - player.pos.y + (1-sy)*0.5f) / (rdy == 0.0f ? 0.0001f : rdy)
-        : (mx - player.pos.x + (1-sx)*0.5f) / (rdx == 0.0f ? 0.0001f : rdx);
-    return clampf(std::fabs(dist), 0.001f, kMaxRayDistance);
+    float dist = 0.0f;
+    float wallX = 0.0f;
+    if (!side) {
+        dist = (mx - player.pos.x + (1-sx)*0.5f) / (rdx == 0.0f ? 0.0001f : rdx);
+        wallX = player.pos.y + dist * rdy;
+    } else {
+        dist = (my - player.pos.y + (1-sy)*0.5f) / (rdy == 0.0f ? 0.0001f : rdy);
+        wallX = player.pos.x + dist * rdx;
+    }
+    wallX -= std::floor(wallX);
+    return {clampf(std::fabs(dist), 0.001f, kMaxRayDistance), side, wallX};
 }
 
 // ============================================================
@@ -800,6 +843,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     ShowWindow(hWnd, nCmdShow);
     createBackBuffer(hWnd);
     initRayLut();
+    generateTextures();
 
     // --------------------------------------------------------
     // Game state
@@ -1050,24 +1094,23 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         float bob   = std::sin(levelTimer*(6.0f+speed*0.7f)) * clampf(speed/24.0f,0,1) * 16.0f;
         float horizon = bob - player.z*120.0f;
 
-        // Daggerfall dungeon: dark stone ceiling gradient, dark floor
+        // Groovy neon ceiling + floor
         clearScreen(0x00000000);
-        // Ceiling - very dark stone, nearly black dungeon roof
         for (int cy2 = 0; cy2 < kScreenHeight/2+70; ++cy2) {
             float t = (float)cy2 / (float)(kScreenHeight/2+70);
-            unsigned int r2 = (unsigned int)(8  + t * 18);
-            unsigned int g2 = (unsigned int)(6  + t * 14);
-            unsigned int b2 = (unsigned int)(4  + t * 10);
+            unsigned int r2 = (unsigned int)(20  + t * 60);
+            unsigned int g2 = (unsigned int)(10  + t * 40);
+            unsigned int b2 = (unsigned int)(44  + t * 120);
             unsigned int col2 = (r2 << 16) | (g2 << 8) | b2;
             unsigned int* row2 = &gPixels[cy2 * kScreenWidth];
             for (int px2 = 0; px2 < kScreenWidth; ++px2) row2[px2] = col2;
         }
-        // Floor - dark worn stone with slight warm tinge (torch-lit dungeon floor)
+        // Floor gradient (teal pulse)
         for (int fy = kScreenHeight/2+(int)horizon; fy < kScreenHeight; ++fy) {
             float ft = 1.0f - clampf((float)(fy - (kScreenHeight/2+(int)horizon)) / (float)(kScreenHeight/2 + 120), 0.0f, 1.0f);
-            unsigned int fr = (unsigned int)(22 + ft * 20);
-            unsigned int fg = (unsigned int)(16 + ft * 14);
-            unsigned int fb = (unsigned int)(10 + ft * 8);
+            unsigned int fr = (unsigned int)(8 + ft * 28);
+            unsigned int fg = (unsigned int)(24 + ft * 72);
+            unsigned int fb = (unsigned int)(40 + ft * 110);
             unsigned int fcol = (fr << 16) | (fg << 8) | fb;
             unsigned int* frow = &gPixels[fy * kScreenWidth];
             for (int fpx = 0; fpx < kScreenWidth; ++fpx) frow[fpx] = fcol;
@@ -1079,53 +1122,49 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         for (int x=0; x<kScreenWidth; ++x) {
             float rdx = fwd.x + plane.x*gCameraX[x];
             float rdy = fwd.y + plane.y*gCameraX[x];
-            float dist = raycastDistance(player, rdx, rdy);
-            float lh   = (float)kScreenHeight / dist;
+            RayHit hit = raycastDistance(player, rdx, rdy);
+            float lh   = (float)kScreenHeight / hit.dist;
             int ds = std::max(0, (int)(-lh/2 + kScreenHeight/2 + horizon));
             int de = std::min(kScreenHeight, (int)(lh/2 + kScreenHeight/2 + horizon));
-            // Daggerfall dungeon stone walls: warm torchlight on near walls, cold darkness at distance
-            // Side walls (side=true in DDA) are slightly darker for depth perception
-            float distFade = clampf(1.0f - dist / kMaxRayDistance, 0.0f, 1.0f);
-            // Base stone: grey-brown with torchlight warmth falloff
-            float torch = distFade * distFade; // quadratic falloff like torchlight
-            unsigned int wr = (unsigned int)(15 + torch * 155); // warm reddish-orange stone
-            unsigned int wg = (unsigned int)(10 + torch * 105); // slightly green for old stone
-            unsigned int wb = (unsigned int)(8  + torch * 62);  // low blue for warm stone
-            // Subtle brick banding: draw darker mortar rows every ~16 pixels
-            // (applied per-pixel inside drawVerticalLine equivalent via custom loop)
-            // Draw each pixel with brick-band effect
-            {
-                if ((unsigned)x < (unsigned)kScreenWidth) {
-                    int y0b = std::max(0, ds), y1b = std::min(kScreenHeight, de);
-                    float wallH = (float)(de - ds);
-                    for (int py = y0b; py < y1b; ++py) {
-                        // Map wall pixel to a "brick row" based on vertical position in wall
-                        float wallV = (py - ds) / (wallH > 0 ? wallH : 1.0f);
-                        // Brick rows every ~8% of wall height, mortar is thin dark line
-                        float brickRow = wallV * 12.0f;
-                        bool isMortar = (brickRow - (int)brickRow) < 0.08f;
-                        // Alternate column offset per brick row for staggered bricks
-                        bool isVMortar = false;
-                        {
-                            int bRow = (int)brickRow;
-                            float brickU = (float)x / (float)kScreenWidth;
-                            float offset = (bRow % 2 == 0) ? 0.0f : 0.5f;
-                            float brickCol = (brickU + offset) * 8.0f;
-                            isVMortar = (brickCol - (int)brickCol) < 0.06f;
-                        }
-                        unsigned int fr = wr, fg = wg, fb = wb;
-                        if (isMortar || isVMortar) {
-                            // Mortar lines darker
-                            fr = fr * 40 / 100;
-                            fg = fg * 40 / 100;
-                            fb = fb * 40 / 100;
-                        }
-                        unsigned int wc2 = (fr << 16) | (fg << 8) | fb;
-                        gPixels[py * kScreenWidth + x] = wc2;
-                    }
-                }
+
+            int texX = (int)(hit.wallX * kTexSize);
+            if ((!hit.side && rdx > 0) || (hit.side && rdy < 0)) texX = kTexSize - texX - 1;
+            float step = 1.0f * kTexSize / std::max(1.0f, lh);
+            float texPos = (ds - horizon - kScreenHeight/2 + lh/2) * step;
+
+            float fog = clampf(1.0f - (hit.dist / (kMaxRayDistance * 0.75f)), 0.0f, 1.0f);
+            float sideShade = hit.side ? 0.78f : 1.0f;
+            float shade = fog * sideShade;
+
+            for (int y = ds; y < de; ++y) {
+                int texY = ((int)texPos) & (kTexSize - 1);
+                texPos += step;
+                unsigned int base = gWallTex[texY * kTexSize + texX];
+                int r = (int)(((base >> 16) & 0xFF) * shade);
+                int g = (int)(((base >> 8) & 0xFF) * shade);
+                int b = (int)((base & 0xFF) * shade);
+                putPixel(x, y, (r << 16) | (g << 8) | b);
             }
-            (void)wc; // wall drawn per-pixel above with brick texture
+
+            for (int y = std::max(de, 0); y < kScreenHeight; ++y) {
+                float p = y - kScreenHeight / 2.0f - horizon;
+                if (p <= 0.0f) continue;
+                float camZ = 0.5f * kScreenHeight + player.z * 130.0f;
+                float rowDist = camZ / p;
+                float fixDist = rowDist / std::cos(std::atan2(gCameraX[x] * kCameraPlaneScale, 1.0f));
+
+                float floorX = player.pos.x + rdx * fixDist;
+                float floorY = player.pos.y + rdy * fixDist;
+                int tx = ((int)(floorX * kTexSize)) & (kTexSize - 1);
+                int ty = ((int)(floorY * kTexSize)) & (kTexSize - 1);
+                unsigned int base = gFloorTex[ty * kTexSize + tx];
+
+                float floorFog = clampf(1.0f - fixDist / (kMaxRayDistance * 0.8f), 0.0f, 1.0f);
+                int r = (int)(((base >> 16) & 0xFF) * floorFog);
+                int g = (int)(((base >> 8) & 0xFF) * floorFog);
+                int b = (int)((base & 0xFF) * floorFog);
+                putPixel(x, y, (r << 16) | (g << 8) | b);
+            }
         }
 
         for (auto& r : rings)    drawRingBillboard(player, r, horizon);
